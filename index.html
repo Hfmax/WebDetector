@@ -5,19 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Descripteur d'Images IA</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
             padding: 20px;
         }
-
         .container {
             max-width: 800px;
             margin: 0 auto;
@@ -26,13 +20,7 @@
             padding: 30px;
             box-shadow: 0 10px 40px rgba(0,0,0,0.2);
         }
-
-        h1 {
-            text-align: center;
-            color: #333;
-            margin-bottom: 30px;
-        }
-
+        h1 { text-align: center; color: #333; margin-bottom: 30px; }
         .camera-section {
             position: relative;
             width: 100%;
@@ -42,12 +30,7 @@
             overflow: hidden;
             background: #000;
         }
-
-        #video {
-            width: 100%;
-            display: block;
-        }
-
+        #video { width: 100%; display: block; }
         .controls {
             display: flex;
             justify-content: center;
@@ -55,7 +38,6 @@
             flex-wrap: wrap;
             margin-bottom: 20px;
         }
-
         .btn {
             padding: 12px 24px;
             border: none;
@@ -65,39 +47,10 @@
             cursor: pointer;
             transition: all 0.3s ease;
         }
-
-        .btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-
-        .btn-primary {
-            background: #667eea;
-            color: white;
-        }
-
-        .btn-primary:hover:not(:disabled) {
-            background: #5568d3;
-        }
-
-        .btn-success {
-            background: #48bb78;
-            color: white;
-        }
-
-        .btn-success:hover:not(:disabled) {
-            background: #38a169;
-        }
-
-        .btn-danger {
-            background: #f56565;
-            color: white;
-        }
-
-        .btn-danger:hover:not(:disabled) {
-            background: #e53e3e;
-        }
-
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-primary { background: #667eea; color: white; }
+        .btn-success { background: #48bb78; color: white; }
+        .btn-danger { background: #f56565; color: white; }
         .status {
             text-align: center;
             padding: 15px;
@@ -106,54 +59,24 @@
             font-weight: 600;
             display: none;
         }
-
-        .status.loading {
-            background: #fef3c7;
-            color: #92400e;
-        }
-
-        .status.success {
-            background: #d1fae5;
-            color: #065f46;
-        }
-
-        .status.error {
-            background: #fee2e2;
-            color: #991b1b;
-        }
-
-        .image-container {
-            text-align: center;
-            margin-bottom: 20px;
-        }
-
+        .status.loading { background: #fef3c7; color: #92400e; }
+        .status.success { background: #d1fae5; color: #065f46; }
+        .status.error { background: #fee2e2; color: #991b1b; }
+        .image-container { text-align: center; margin-bottom: 20px; }
         .image-container img {
             max-width: 100%;
             border-radius: 10px;
             box-shadow: 0 4px 15px rgba(0,0,0,0.1);
         }
-
         .description-container {
             background: #f7fafc;
             padding: 20px;
             border-radius: 10px;
             display: none;
         }
-
-        .description-container.show {
-            display: block;
-        }
-
-        .description-container h3 {
-            color: #2d3748;
-            margin-bottom: 10px;
-        }
-
-        .description-container p {
-            color: #4a5568;
-            font-size: 18px;
-            line-height: 1.6;
-        }
+        .description-container.show { display: block; }
+        .description-container h3 { color: #2d3748; margin-bottom: 10px; }
+        .description-container p { color: #4a5568; font-size: 18px; line-height: 1.6; }
     </style>
 </head>
 <body>
@@ -172,7 +95,6 @@
         </div>
         
         <div id="status" class="status"></div>
-        
         <div id="imageContainer" class="image-container"></div>
         
         <div id="descriptionContainer" class="description-container">
@@ -181,11 +103,12 @@
         </div>
     </div>
     
-    <script>
-        // Variables globales
-        let stream = null;
+    <script type="module">
+        import { pipeline } from 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2';
 
-        // Éléments DOM
+        let stream = null;
+        let captioner = null;
+
         const video = document.getElementById('video');
         const canvas = document.getElementById('canvas');
         const captureBtn = document.getElementById('captureBtn');
@@ -196,7 +119,6 @@
         const description = document.getElementById('description');
         const descriptionContainer = document.getElementById('descriptionContainer');
 
-        // Fonctions d'affichage de statut
         function showStatus(message, type) {
             status.textContent = message;
             status.className = 'status ' + type;
@@ -207,15 +129,37 @@
             status.style.display = 'none';
         }
 
-        // Démarrer la caméra
+        async function loadModel() {
+            if (captioner) return;
+            
+            showStatus('🔄 Chargement du modèle IA (30-60s, une seule fois)...', 'loading');
+            
+            try {
+                captioner = await pipeline('image-to-text', 'Xenova/vit-gpt2-image-captioning', {
+                    quantized: true,
+                    progress_callback: (progress) => {
+                        if (progress.status === 'downloading') {
+                            const percent = Math.round((progress.loaded / progress.total) * 100);
+                            showStatus('📥 Téléchargement: ' + percent + '%', 'loading');
+                        }
+                    }
+                });
+                showStatus('✅ Modèle chargé !', 'success');
+                setTimeout(hideStatus, 2000);
+            } catch (error) {
+                showStatus('❌ Erreur chargement: ' + error.message, 'error');
+                console.error(error);
+            }
+        }
+
         async function startCamera() {
             try {
                 if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                    showStatus('❌ Erreur : Accès caméra nécessite HTTPS.', 'error');
+                    showStatus('❌ Erreur : HTTPS requis', 'error');
                     return;
                 }
                 
-                showStatus('Démarrage de la caméra...', 'loading');
+                showStatus('📷 Démarrage caméra...', 'loading');
                 
                 stream = await navigator.mediaDevices.getUserMedia({ 
                     video: { 
@@ -232,21 +176,18 @@
                 stopCameraBtn.disabled = false;
                 startCameraBtn.disabled = true;
                 
-                showStatus('✅ Caméra activée ! Cliquez sur "Capturer" pour analyser.', 'success');
-                setTimeout(hideStatus, 3000);
+                hideStatus();
+                loadModel(); // Charger en arrière-plan
                 
             } catch (error) {
-                showStatus('❌ Erreur: ' + error.message, 'error');
-                console.error('Erreur caméra:', error);
+                showStatus('❌ ' + error.message, 'error');
             }
         }
 
-        // Arrêter la caméra
         function stopCamera() {
             if (stream) {
                 stream.getTracks().forEach(track => track.stop());
                 video.srcObject = null;
-                video.style.display = 'none';
                 stream = null;
                 
                 captureBtn.disabled = true;
@@ -255,67 +196,44 @@
             }
         }
 
-        // Capturer et analyser l'image
         async function captureAndDescribe() {
             try {
-                showStatus('📸 Capture de l\'image...', 'loading');
+                if (!captioner) {
+                    showStatus('⏳ Modèle en cours de chargement, patientez...', 'loading');
+                    await loadModel();
+                    if (!captioner) return;
+                }
+                
+                showStatus('📸 Capture...', 'loading');
                 
                 canvas.width = video.videoWidth;
                 canvas.height = video.videoHeight;
+                canvas.getContext('2d').drawImage(video, 0, 0);
                 
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(video, 0, 0);
+                const imageDataUrl = canvas.toDataURL('image/jpeg', 0.7);
+                imageContainer.innerHTML = '<img src="' + imageDataUrl + '">';
                 
-                const imageDataUrl = canvas.toDataURL('image/jpeg', 0.8);
-                imageContainer.innerHTML = '<img src="' + imageDataUrl + '" alt="Image capturée">';
+                showStatus('🤖 Analyse IA...', 'loading');
                 
-                showStatus('🤖 Analyse par IA (Hugging Face)...', 'loading');
+                const result = await captioner(imageDataUrl);
+                const text = result[0].generated_text;
                 
-                // Convertir en Blob
-                const response = await fetch(imageDataUrl);
-                const blob = await response.blob();
-                
-                // Appel API Hugging Face (gratuit)
-                const apiResponse = await fetch(
-                    "https://api-inference.huggingface.co/models/Salesforce/blip-image-captioning-base",
-                    {
-                        method: "POST",
-                        body: blob,
-                    }
-                );
-                
-                const result = await apiResponse.json();
-                
-                if (result.error) {
-                    if (result.error.indexOf('loading') !== -1) {
-                        showStatus('⏳ Le modèle se charge sur le serveur, réessayez dans 20 secondes...', 'loading');
-                    } else {
-                        showStatus('❌ Erreur API: ' + result.error, 'error');
-                    }
-                    return;
-                }
-                
-                const generatedText = result[0].generated_text;
-                description.textContent = generatedText.charAt(0).toUpperCase() + generatedText.slice(1);
+                description.textContent = text.charAt(0).toUpperCase() + text.slice(1);
                 descriptionContainer.classList.add('show');
                 
-                showStatus('✅ Description générée avec succès !', 'success');
-                setTimeout(hideStatus, 3000);
+                showStatus('✅ Terminé !', 'success');
+                setTimeout(hideStatus, 2000);
                 
             } catch (error) {
-                showStatus('❌ Erreur: ' + error.message, 'error');
-                console.error('Erreur complète:', error);
+                showStatus('❌ ' + error.message, 'error');
+                console.error(error);
             }
         }
 
-        // Event listeners
         startCameraBtn.addEventListener('click', startCamera);
         stopCameraBtn.addEventListener('click', stopCamera);
         captureBtn.addEventListener('click', captureAndDescribe);
-
-        window.addEventListener('beforeunload', function() {
-            stopCamera();
-        });
+        window.addEventListener('beforeunload', stopCamera);
     </script>
 </body>
 </html>
